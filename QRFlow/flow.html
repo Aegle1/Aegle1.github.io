@@ -477,7 +477,10 @@
       tid: "",
       fileName: "",
       lastDecoded: "",
-      selectedDeviceId: ""
+      selectedDeviceId: "",
+      cameraPermissionPrimed: false,
+      openingCameraPicker: false,
+      cameraCount: null
     };
 
     function bytesToBase64(bytes) {
@@ -626,10 +629,33 @@
       return total > 1 && index === 0 ? label + " (default)" : label;
     }
 
+    function updateCameraReceiveButton() {
+      const button = $("camera-scan");
+      if (receiver.active && receiver.mode === "camera") {
+        button.disabled = false;
+        button.textContent = "Stop scanning";
+        button.title = "Stop camera scanning";
+        return;
+      }
+
+      if (receiver.cameraCount === 0) {
+        button.disabled = true;
+        button.textContent = "No camera found";
+        button.title = "No camera detected. Use screen capture or connect a camera.";
+        return;
+      }
+
+      button.disabled = false;
+      button.textContent = "Camera";
+      button.title = receiver.cameraCount > 1 ? "Start receiving with the selected camera" : "Start receiving with camera";
+    }
+
     async function refreshCameraList(requestPermission = false, silent = false) {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
         $("camera-select").disabled = true;
         $("camera-select").title = "This browser cannot list cameras";
+        receiver.cameraCount = 0;
+        updateCameraReceiveButton();
         if (!silent) setStatus("receive-status", "This browser cannot list cameras.", true);
         return;
       }
@@ -638,6 +664,7 @@
       if (requestPermission && navigator.mediaDevices.getUserMedia) {
         try {
           probeStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          receiver.cameraPermissionPrimed = true;
         } catch (error) {
           if (!silent) setStatus("receive-status", "Camera permission failed: " + error.message, true);
         } finally {
@@ -648,6 +675,8 @@
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cameras = devices.filter((device) => device.kind === "videoinput");
+        if (cameras.some((camera) => camera.label)) receiver.cameraPermissionPrimed = true;
+        receiver.cameraCount = cameras.length;
         const select = $("camera-select");
         const previous = select.value || receiver.selectedDeviceId;
         select.innerHTML = "";
@@ -675,12 +704,39 @@
         receiver.selectedDeviceId = select.value;
         select.disabled = false;
         select.title = cameras.length === 0 ? "Click to check for cameras again" : cameras.length === 1 ? "Only one camera is available" : "Choose a camera";
+        updateCameraReceiveButton();
         if (!silent) {
           const message = cameras.length === 0 ? "No cameras found." : cameras.length === 1 ? "Camera available." : cameras.length + " cameras available.";
           setStatus("receive-status", message, cameras.length === 0);
         }
       } catch (error) {
+        receiver.cameraCount = 0;
+        updateCameraReceiveButton();
         if (!silent) setStatus("receive-status", "Unable to list cameras: " + error.message, true);
+      }
+    }
+
+    async function prepareCameraPicker(event) {
+      if (receiver.openingCameraPicker || receiver.active) return;
+      if (receiver.cameraPermissionPrimed) {
+        refreshCameraList(false, true);
+        return;
+      }
+
+      event.preventDefault();
+      receiver.openingCameraPicker = true;
+      setStatus("receive-status", "Checking cameras...");
+      await refreshCameraList(true, false);
+      receiver.openingCameraPicker = false;
+
+      const select = $("camera-select");
+      select.focus();
+      if (typeof select.showPicker === "function") {
+        try {
+          select.showPicker();
+        } catch (error) {
+          // The next click will open the browser-native menu if showPicker is blocked.
+        }
       }
     }
 
@@ -692,6 +748,11 @@
 
       if (!navigator.mediaDevices) {
         setStatus("receive-status", "This browser does not expose media capture APIs.", true);
+        return;
+      }
+
+      if (mode === "camera" && receiver.cameraCount === 0) {
+        setStatus("receive-status", "No camera found. Use screen capture or connect a camera.", true);
         return;
       }
 
@@ -715,11 +776,12 @@
 
         $("reader").innerHTML = "";
         $("reader").appendChild(video);
-        $("camera-scan").textContent = "Stop scanning";
         $("screen-scan").textContent = "Stop capture";
+        updateCameraReceiveButton();
         setStatus("receive-status", mode === "screen" ? "Scanning screen capture..." : "Scanning " + getSelectedCameraLabel() + "...");
         if (mode === "camera") {
           const activeDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
+          receiver.cameraPermissionPrimed = true;
           if (activeDeviceId) receiver.selectedDeviceId = activeDeviceId;
           refreshCameraList(false, true);
         }
@@ -759,8 +821,8 @@
       receiver.active = false;
       receiver.mode = null;
       $("reader").innerHTML = '<p id="reader-placeholder">Waiting to start scanning...</p>';
-      $("camera-scan").textContent = "Camera";
       $("screen-scan").textContent = "Screen capture";
+      updateCameraReceiveButton();
     }
 
     function resetReceiveState() {
@@ -904,7 +966,7 @@
           requestAnimationFrame(() => startVideoScan("camera"));
         }
       });
-      $("camera-select").addEventListener("pointerdown", () => refreshCameraList(false, true));
+      $("camera-select").addEventListener("pointerdown", prepareCameraPicker);
       $("camera-select").addEventListener("focus", () => refreshCameraList(false, true));
       $("camera-scan").addEventListener("click", () => startVideoScan("camera"));
       $("screen-scan").addEventListener("click", () => startVideoScan("screen"));
