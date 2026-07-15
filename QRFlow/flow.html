@@ -208,7 +208,7 @@
     .reader p { margin: 0; padding: 16px; text-align: center; }
     .camera-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr);
       gap: 10px;
       margin-bottom: 10px;
     }
@@ -399,7 +399,6 @@
           <select class="select" id="camera-select" aria-label="Camera">
             <option value="">Detecting cameras...</option>
           </select>
-          <button class="btn" id="refresh-cameras" type="button">Refresh cameras</button>
         </div>
 
         <div class="scan-grid">
@@ -622,10 +621,15 @@
       return label && label !== "Detecting cameras..." && label !== "No camera found" ? label : "camera";
     }
 
+    function getCameraLabel(camera, index, total) {
+      const label = camera.label || (total === 1 ? "Camera" : "Camera " + (index + 1));
+      return total > 1 && index === 0 ? label + " (default)" : label;
+    }
+
     async function refreshCameraList(requestPermission = false, silent = false) {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
         $("camera-select").disabled = true;
-        $("refresh-cameras").disabled = true;
+        $("camera-select").title = "This browser cannot list cameras";
         if (!silent) setStatus("receive-status", "This browser cannot list cameras.", true);
         return;
       }
@@ -655,17 +659,13 @@
         } else if (cameras.length === 1) {
           const option = document.createElement("option");
           option.value = cameras[0].deviceId;
-          option.textContent = cameras[0].label || "Camera";
+          option.textContent = getCameraLabel(cameras[0], 0, cameras.length);
           select.appendChild(option);
         } else {
-          const defaultOption = document.createElement("option");
-          defaultOption.value = "";
-          defaultOption.textContent = "Default camera";
-          select.appendChild(defaultOption);
           cameras.forEach((camera, index) => {
             const option = document.createElement("option");
             option.value = camera.deviceId;
-            option.textContent = camera.label || "Camera " + (index + 1);
+            option.textContent = getCameraLabel(camera, index, cameras.length);
             select.appendChild(option);
           });
         }
@@ -673,7 +673,8 @@
           select.value = previous;
         }
         receiver.selectedDeviceId = select.value;
-        select.disabled = cameras.length <= 1;
+        select.disabled = false;
+        select.title = cameras.length === 0 ? "Click to check for cameras again" : cameras.length === 1 ? "Only one camera is available" : "Choose a camera";
         if (!silent) {
           const message = cameras.length === 0 ? "No cameras found." : cameras.length === 1 ? "Camera available." : cameras.length + " cameras available.";
           setStatus("receive-status", message, cameras.length === 0);
@@ -717,7 +718,11 @@
         $("camera-scan").textContent = "Stop scanning";
         $("screen-scan").textContent = "Stop capture";
         setStatus("receive-status", mode === "screen" ? "Scanning screen capture..." : "Scanning " + getSelectedCameraLabel() + "...");
-        if (mode === "camera") refreshCameraList(false, true);
+        if (mode === "camera") {
+          const activeDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
+          if (activeDeviceId) receiver.selectedDeviceId = activeDeviceId;
+          refreshCameraList(false, true);
+        }
         stream.getVideoTracks()[0].addEventListener("ended", stopScanning, { once: true });
         scanLoop();
       } catch (error) {
@@ -852,7 +857,10 @@
 
     function bindEvents() {
       $("tab-send").addEventListener("click", () => switchTab("send"));
-      $("tab-receive").addEventListener("click", () => switchTab("receive"));
+      $("tab-receive").addEventListener("click", () => {
+        switchTab("receive");
+        refreshCameraList(false, true);
+      });
       $("choose-file").addEventListener("click", () => $("file-input").click());
       $("clear-file").addEventListener("click", resetFile);
       $("start-send").addEventListener("click", () => prepareSending(false));
@@ -896,7 +904,8 @@
           requestAnimationFrame(() => startVideoScan("camera"));
         }
       });
-      $("refresh-cameras").addEventListener("click", () => refreshCameraList(true));
+      $("camera-select").addEventListener("pointerdown", () => refreshCameraList(false, true));
+      $("camera-select").addEventListener("focus", () => refreshCameraList(false, true));
       $("camera-scan").addEventListener("click", () => startVideoScan("camera"));
       $("screen-scan").addEventListener("click", () => startVideoScan("screen"));
       $("reset-receive").addEventListener("click", resetReceiveState);
