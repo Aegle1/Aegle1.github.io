@@ -188,8 +188,9 @@
       display: grid;
       place-items: center;
       width: 100%;
+      max-width: 420px;
       aspect-ratio: 1;
-      margin-bottom: 16px;
+      margin: 0 auto 16px;
       overflow: hidden;
       border-radius: 8px;
       background: #121826;
@@ -201,6 +202,22 @@
       object-fit: cover;
     }
     .reader p { margin: 0; padding: 16px; text-align: center; }
+    .camera-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .select {
+      min-width: 0;
+      height: 48px;
+      padding: 0 12px;
+      border: 1px solid #d9deea;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      font-weight: 750;
+    }
     .scan-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -278,8 +295,9 @@
       body { padding-inline: 10px; }
       .topbar { align-items: stretch; flex-direction: column; }
       .tabs { width: 100%; }
-      .button-grid, .scan-grid, .settings-grid { grid-template-columns: 1fr; }
+      .button-grid, .scan-grid, .settings-grid, .camera-row { grid-template-columns: 1fr; }
       .scan-grid .reset { grid-column: auto; }
+      .reader { max-width: none; }
     }
   </style>
 </head>
@@ -336,6 +354,13 @@
       <div class="card">
         <div class="reader" id="reader">
           <p id="reader-placeholder">Waiting to start scanning...</p>
+        </div>
+
+        <div class="camera-row">
+          <select class="select" id="camera-select" aria-label="Camera">
+            <option value="">Detecting cameras...</option>
+          </select>
+          <button class="btn" id="refresh-cameras" type="button">Refresh cameras</button>
         </div>
 
         <div class="scan-grid">
@@ -445,6 +470,7 @@
 
     const receiver = {
       active: false,
+      mode: null,
       tid: "",
       total: 0,
       solved: {},
@@ -457,7 +483,8 @@
       video: null,
       canvas: document.createElement("canvas"),
       rafId: 0,
-      isFinishing: false
+      isFinishing: false,
+      selectedDeviceId: ""
     };
 
     function setStatus(target, message, isError = false) {
@@ -589,6 +616,79 @@
       setStatus("send-status", "");
     }
 
+    function getCameraConstraints() {
+      const selected = $("camera-select").value || receiver.selectedDeviceId;
+      if (selected) return { deviceId: { exact: selected } };
+      return { facingMode: "environment" };
+    }
+
+    function getSelectedCameraLabel() {
+      const select = $("camera-select");
+      const label = select.selectedOptions[0]?.textContent;
+      return label && label !== "Detecting cameras..." && label !== "No camera found" ? label : "camera";
+    }
+
+    async function refreshCameraList(requestPermission = false, silent = false) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        $("camera-select").disabled = true;
+        $("refresh-cameras").disabled = true;
+        if (!silent) setStatus("receive-status", "This browser cannot list cameras.", true);
+        return;
+      }
+
+      let probeStream = null;
+      if (requestPermission && navigator.mediaDevices.getUserMedia) {
+        try {
+          probeStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        } catch (error) {
+          if (!silent) setStatus("receive-status", "Camera permission failed: " + error.message, true);
+        } finally {
+          if (probeStream) probeStream.getTracks().forEach((track) => track.stop());
+        }
+      }
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter((device) => device.kind === "videoinput");
+        const select = $("camera-select");
+        const previous = select.value || receiver.selectedDeviceId;
+        select.innerHTML = "";
+        if (cameras.length === 0) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "No camera found";
+          select.appendChild(option);
+        } else if (cameras.length === 1) {
+          const option = document.createElement("option");
+          option.value = cameras[0].deviceId;
+          option.textContent = cameras[0].label || "Camera";
+          select.appendChild(option);
+        } else {
+          const defaultOption = document.createElement("option");
+          defaultOption.value = "";
+          defaultOption.textContent = "Default camera";
+          select.appendChild(defaultOption);
+          cameras.forEach((camera, index) => {
+            const option = document.createElement("option");
+            option.value = camera.deviceId;
+            option.textContent = camera.label || "Camera " + (index + 1);
+            select.appendChild(option);
+          });
+        }
+        if (previous && Array.from(select.options).some((option) => option.value === previous)) {
+          select.value = previous;
+        }
+        receiver.selectedDeviceId = select.value;
+        select.disabled = cameras.length <= 1;
+        if (!silent) {
+          const message = cameras.length === 0 ? "No cameras found." : cameras.length === 1 ? "Camera available." : cameras.length + " cameras available.";
+          setStatus("receive-status", message, cameras.length === 0);
+        }
+      } catch (error) {
+        if (!silent) setStatus("receive-status", "Unable to list cameras: " + error.message, true);
+      }
+    }
+
     async function startVideoScan(mode) {
       if (receiver.active) {
         stopScanning();
@@ -607,11 +707,12 @@
       try {
         const stream = mode === "screen"
           ? await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 20 }, audio: false })
-          : await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+          : await navigator.mediaDevices.getUserMedia({ video: getCameraConstraints(), audio: false });
 
         receiver.stream = stream;
         receiver.video = video;
         receiver.active = true;
+        receiver.mode = mode;
         video.srcObject = stream;
         await video.play();
 
@@ -619,7 +720,8 @@
         $("reader").appendChild(video);
         $("camera-scan").textContent = "Stop scanning";
         $("screen-scan").textContent = "Stop capture";
-        setStatus("receive-status", mode === "screen" ? "Scanning screen capture..." : "Scanning camera...");
+        setStatus("receive-status", mode === "screen" ? "Scanning screen capture..." : "Scanning " + getSelectedCameraLabel() + "...");
+        if (mode === "camera") refreshCameraList(false, true);
         stream.getVideoTracks()[0].addEventListener("ended", stopScanning, { once: true });
         scanLoop();
       } catch (error) {
@@ -686,6 +788,7 @@
       receiver.stream = null;
       receiver.video = null;
       receiver.active = false;
+      receiver.mode = null;
       $("reader").innerHTML = '<p id="reader-placeholder">Waiting to start scanning...</p>';
       $("camera-scan").textContent = "Camera receive";
       $("screen-scan").textContent = "Screen receive";
@@ -872,6 +975,15 @@
         reader.onerror = () => setStatus("send-status", "Unable to read the selected file.", true);
         reader.readAsArrayBuffer(file);
       });
+      $("camera-select").addEventListener("change", (event) => {
+        receiver.selectedDeviceId = event.target.value;
+        if (receiver.active && receiver.mode === "camera") {
+          stopScanning();
+          setStatus("receive-status", "Switching camera...");
+          requestAnimationFrame(() => startVideoScan("camera"));
+        }
+      });
+      $("refresh-cameras").addEventListener("click", () => refreshCameraList(true));
       window.addEventListener("beforeunload", () => {
         stopSending(false);
         stopScanning();
@@ -881,6 +993,7 @@
     renderQrCanvases();
     updateSendStats();
     bindEvents();
+    refreshCameraList(false);
   })();
   </script>
 </body>
