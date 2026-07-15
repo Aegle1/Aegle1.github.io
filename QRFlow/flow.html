@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -41,7 +41,7 @@
     }
     button:disabled { opacity: .55; cursor: not-allowed; }
 
-    .app { width: min(100%, 640px); margin: 0 auto; }
+    .app { width: min(100%, 1120px); margin: 0 auto; }
     .topbar {
       display: flex;
       align-items: center;
@@ -341,6 +341,10 @@
             <span>Frame size: <strong id="chunk-value">350</strong> bytes</span>
             <input id="chunk-range" type="range" min="200" max="700" step="10" value="350">
           </label>
+          <label class="range-row">
+            <span>QR size: <strong id="qr-size-value">360</strong> px</span>
+            <input id="qr-size-range" type="range" min="160" max="1000" step="20" value="360">
+          </label>
         </div>
 
         <div class="button-grid">
@@ -430,6 +434,7 @@
       frameIndex: 0,
       fps: 12,
       chunkSize: 350,
+      qrSize: 360,
       timer: null,
       tid: "",
       isSending: false,
@@ -531,6 +536,14 @@
         setStatus("send-status", "This frame is too large for a QR code. Reduce frame size.", true);
         stopTimer();
       }
+    }
+
+    function applyQrSize() {
+      sender.qrSize = Number($("qr-size-range").value);
+      $("qr-size-value").textContent = String(sender.qrSize);
+      $("qr-canvas").style.maxWidth = sender.qrSize + "px";
+      sender.qr.size = sender.qrSize;
+      renderFrame();
     }
 
     function stopTimer() {
@@ -760,6 +773,7 @@
         $("chunk-value").textContent = String(sender.chunkSize);
         if (sender.isSending) prepareSending(true);
       });
+      $("qr-size-range").addEventListener("input", applyQrSize);
       $("file-input").addEventListener("change", (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -790,6 +804,7 @@
     }
 
     sender.qr = new QRious({ element: $("qr-canvas"), size: 360, level: "L" });
+    applyQrSize();
     bindEvents();
   })();
   </script>
