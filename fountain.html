@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>QRFlow - Normal QR Transfer</title>
+  <title>QRFlow - Fountain QR Transfer</title>
   <style>
     :root {
       color-scheme: light;
@@ -15,9 +15,7 @@
       --primary: #1769e0;
       --primary-2: #5b3fd8;
       --danger: #c9253f;
-      --danger-bg: #fff0f3;
       --success: #068a5b;
-      --success-bg: #eafaf3;
       --ink: #111827;
       --shadow: 0 18px 45px rgba(20, 30, 55, 0.12);
     }
@@ -32,15 +30,9 @@
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-tap-highlight-color: transparent;
     }
-
     button, input, textarea { font: inherit; }
-    button {
-      border: 0;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
+    button { border: 0; cursor: pointer; touch-action: manipulation; }
     button:disabled { opacity: .55; cursor: not-allowed; }
-
     .app { width: min(100%, 640px); margin: 0 auto; }
     .topbar {
       display: flex;
@@ -55,29 +47,25 @@
       line-height: 1.05;
       letter-spacing: 0;
     }
-    .subtle { color: var(--muted); }
+    .accent { color: var(--primary); }
     .tabs {
       display: inline-flex;
       gap: 4px;
+      width: 196px;
       padding: 4px;
       border-radius: 8px;
       background: #e8ecf4;
       box-shadow: inset 0 1px 2px rgba(20, 30, 55, .08);
     }
     .tab {
-      min-width: 84px;
-      padding: 10px 14px;
+      flex: 1;
+      padding: 10px 12px;
       border-radius: 6px;
       color: var(--muted);
       font-weight: 800;
       background: transparent;
     }
-    .tab.active {
-      color: var(--primary);
-      background: #fff;
-      box-shadow: 0 2px 10px rgba(20, 30, 55, .08);
-    }
-
+    .tab.active { color: var(--primary); background: #fff; box-shadow: 0 2px 10px rgba(20, 30, 55, .08); }
     .panel { display: grid; gap: 14px; }
     .hidden { display: none !important; }
     .card {
@@ -87,10 +75,10 @@
       box-shadow: 0 2px 14px rgba(20, 30, 55, .06);
       padding: 18px;
     }
-    .field-wrap { position: relative; }
     textarea {
       width: 100%;
       min-height: 128px;
+      margin-bottom: 14px;
       resize: vertical;
       padding: 15px;
       border: 2px dashed var(--line);
@@ -100,51 +88,28 @@
       color: var(--text);
     }
     textarea:focus { border-color: var(--primary); background: #fff; }
-    .file-card {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-content: center;
-      gap: 10px;
-      padding: 16px;
-      text-align: center;
-      border: 2px solid #dce8ff;
+    .file-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 12px;
       border-radius: 8px;
-      background: #fff;
-    }
-    .file-name {
-      max-width: 100%;
-      margin: 0;
+      background: #eef5ff;
       color: var(--primary);
-      font-weight: 800;
-      word-break: break-all;
+      font-size: .86rem;
+      font-weight: 850;
     }
+    .file-info span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .link-danger {
+      flex: none;
       color: var(--danger);
       background: transparent;
       font-size: .78rem;
-      font-weight: 800;
-      text-decoration: underline;
+      font-weight: 850;
     }
-
-    .controls { display: grid; gap: 14px; margin-top: 14px; }
-    .range-row {
-      display: grid;
-      grid-template-columns: minmax(130px, 1fr) minmax(160px, 48%);
-      align-items: center;
-      gap: 12px;
-      color: var(--muted);
-      font-size: .78rem;
-      font-weight: 800;
-    }
-    .range-row strong { color: var(--primary); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
-    input[type=range] { width: 100%; accent-color: var(--primary); }
-    .button-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 18px;
-    }
+    .button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -160,33 +125,38 @@
     .btn.secondary { color: #fff; background: var(--primary-2); }
     .btn.dark { color: #fff; background: var(--ink); }
     .btn.full { width: 100%; }
-
-    .counter {
-      margin-bottom: 16px;
-      text-align: center;
-      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: clamp(2.4rem, 12vw, 4.5rem);
-      line-height: 1;
-      font-weight: 950;
-    }
-    .counter .current { color: var(--primary); }
-    .counter .slash { color: #d4d9e4; }
-    .qr-wrap {
-      display: flex;
-      justify-content: center;
-      padding: 18px;
+    .qr-matrix {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px;
       border-radius: 8px;
       background: #fff;
       box-shadow: var(--shadow);
     }
-    #qr-canvas {
+    .qr-matrix canvas {
       width: 100% !important;
-      max-width: 360px;
       height: auto !important;
+      border-radius: 4px;
     }
-    .player-controls { display: grid; gap: 18px; margin-top: 18px; }
-    .step-row { display: grid; grid-template-columns: 64px 1fr 64px; gap: 12px; }
-
+    .send-stats {
+      text-align: center;
+    }
+    .send-stats .label {
+      margin: 0 0 5px;
+      color: var(--muted);
+      font-size: .72rem;
+      font-weight: 950;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .send-stats .value {
+      color: var(--primary);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 1.7rem;
+      font-weight: 950;
+    }
+    .send-stats .btn { margin-top: 14px; min-height: 40px; }
     .reader {
       position: relative;
       display: grid;
@@ -212,76 +182,56 @@
       margin-bottom: 16px;
     }
     .scan-grid .reset { grid-column: 1 / -1; min-height: 42px; color: var(--muted); }
-    .info-box {
-      padding: 14px;
-      border: 1px solid #d5e4ff;
-      border-radius: 8px;
-      background: #eef5ff;
-    }
-    .eyebrow {
-      margin: 0 0 4px;
-      color: #5277b8;
-      font-size: .68rem;
-      font-weight: 950;
-      text-transform: uppercase;
-    }
-    .info-box p:last-child { margin: 0; word-break: break-all; font-weight: 850; }
-    .progress-box {
-      margin-top: 12px;
-      padding: 16px;
-      border: 1px solid #ffd6de;
-      border-radius: 8px;
-      background: var(--danger-bg);
+    .progress {
+      display: grid;
+      gap: 14px;
     }
     .progress-head {
       display: flex;
+      align-items: flex-end;
       justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-      color: #b04458;
-      font-size: .74rem;
+      gap: 14px;
+    }
+    .recv-name {
+      margin: 0 0 4px;
+      font-weight: 950;
+      word-break: break-all;
+    }
+    .rank {
+      margin: 0;
+      color: var(--primary);
+      font-size: .72rem;
       font-weight: 950;
       text-transform: uppercase;
     }
-    .pill {
-      padding: 4px 9px;
-      border-radius: 999px;
-      color: var(--danger);
-      background: #ffdbe2;
+    .percent {
+      white-space: nowrap;
       font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 2.2rem;
+      line-height: 1;
+      font-weight: 950;
     }
-    .missing-list { display: flex; flex-wrap: wrap; gap: 7px; color: #9aa4b2; font-size: .85rem; }
-    .missing-chip {
-      min-width: 40px;
-      padding: 7px 8px;
-      border: 1px solid #ffd3dc;
-      border-radius: 8px;
-      color: var(--danger);
-      background: #fff;
-      font-size: .82rem;
-      font-weight: 900;
-    }
-    .grid-dots {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-top: 12px;
-    }
-    .dot {
-      width: calc(10% - 4.5px);
-      aspect-ratio: 1;
-      min-width: 12px;
-      border-radius: 4px;
+    .percent small { color: var(--muted); font-size: .95rem; }
+    .bar {
+      height: 14px;
+      overflow: hidden;
+      border-radius: 999px;
       background: #e9edf5;
     }
-    .dot.received { background: var(--success); box-shadow: 0 0 0 3px rgba(6, 138, 91, .12); }
+    .bar span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: var(--primary);
+      transition: width .25s ease;
+    }
     .success {
       text-align: center;
       color: #fff;
       background: var(--success);
       box-shadow: var(--shadow);
     }
+    .success h2 { margin: 0 0 8px; font-size: 1.35rem; }
     .success p { margin: 0 0 16px; word-break: break-all; font-weight: 800; }
     .status {
       min-height: 1.2em;
@@ -290,7 +240,7 @@
       font-size: .82rem;
       line-height: 1.4;
     }
-    .status.error { color: var(--danger); font-weight: 800; }
+    .status.error { color: var(--danger); font-weight: 850; }
     .license {
       margin-top: 18px;
       color: var(--muted);
@@ -302,9 +252,6 @@
       body { padding-inline: 10px; }
       .topbar { align-items: stretch; flex-direction: column; }
       .tabs { width: 100%; }
-      .tab { flex: 1; }
-      .range-row { grid-template-columns: 1fr; }
-      .step-row { grid-template-columns: 52px 1fr 52px; }
       .button-grid, .scan-grid { grid-template-columns: 1fr; }
       .scan-grid .reset { grid-column: auto; }
     }
@@ -313,9 +260,7 @@
 <body>
   <main class="app">
     <header class="topbar">
-      <div>
-        <h1>QRFlow <span class="subtle">Normal</span></h1>
-      </div>
+      <h1>QRFlow <span class="accent">Fountain</span></h1>
       <nav class="tabs" aria-label="Mode">
         <button class="tab active" id="tab-send" type="button">Send</button>
         <button class="tab" id="tab-receive" type="button">Receive</button>
@@ -324,45 +269,30 @@
 
     <section class="panel" id="send-panel">
       <div class="card">
-        <div class="field-wrap">
-          <textarea id="input-text" placeholder="Type text, or choose a file..."></textarea>
-          <div class="file-card hidden" id="file-card">
-            <p class="file-name" id="file-name"></p>
-            <button class="link-danger" id="clear-file" type="button">Cancel file</button>
-          </div>
+        <textarea id="input-text" placeholder="Type text, or choose a file..."></textarea>
+        <div class="file-info hidden" id="file-info">
+          <span id="file-name"></span>
+          <button class="link-danger" id="clear-file" type="button">Cancel</button>
         </div>
-
-        <div class="controls">
-          <label class="range-row">
-            <span>Speed: <strong id="fps-value">12</strong> FPS</span>
-            <input id="fps-range" type="range" min="1" max="30" value="12">
-          </label>
-          <label class="range-row">
-            <span>Frame size: <strong id="chunk-value">350</strong> bytes</span>
-            <input id="chunk-range" type="range" min="200" max="700" step="10" value="350">
-          </label>
-        </div>
-
         <div class="button-grid">
           <button class="btn" id="choose-file" type="button">Choose file</button>
           <input class="hidden" id="file-input" type="file">
-          <button class="btn primary" id="start-send" type="button">Start sending</button>
+          <button class="btn primary" id="start-send" type="button">Start fountain</button>
         </div>
         <div class="status" id="send-status"></div>
       </div>
 
-      <div class="card hidden" id="player-box">
-        <div class="counter">
-          <span class="current" id="current-frame">0</span><span class="slash">/</span><span id="total-frames">0</span>
+      <div class="panel hidden" id="player-box">
+        <div class="qr-matrix">
+          <canvas id="qr0"></canvas>
+          <canvas id="qr1"></canvas>
+          <canvas id="qr2"></canvas>
+          <canvas id="qr3"></canvas>
         </div>
-        <div class="qr-wrap"><canvas id="qr-canvas"></canvas></div>
-        <div class="player-controls">
-          <input id="frame-slider" type="range" min="0" max="0" value="0">
-          <div class="step-row">
-            <button class="btn" id="prev-frame" type="button" aria-label="Previous frame">&lt;</button>
-            <button class="btn dark" id="pause-send" type="button">Pause</button>
-            <button class="btn" id="next-frame" type="button" aria-label="Next frame">&gt;</button>
-          </div>
+        <div class="card send-stats">
+          <p class="label">Random fountain packets are broadcasting</p>
+          <div class="value" id="send-stats">0 chunks</div>
+          <button class="btn dark" id="stop-send" type="button">Stop sending</button>
         </div>
       </div>
     </section>
@@ -374,32 +304,28 @@
         </div>
 
         <div class="scan-grid">
-          <button class="btn primary" id="camera-scan" type="button">Camera</button>
-          <button class="btn secondary" id="screen-scan" type="button">Screen capture</button>
+          <button class="btn primary" id="camera-scan" type="button">Camera receive</button>
+          <button class="btn secondary" id="screen-scan" type="button">Screen receive</button>
           <button class="btn reset" id="reset-receive" type="button">Reset receive state</button>
         </div>
 
-        <div class="hidden" id="task-info">
-          <div class="info-box">
-            <p class="eyebrow">Current file</p>
-            <p id="receive-file-name"></p>
-          </div>
-        </div>
-
-        <div class="progress-box">
+        <div class="progress hidden" id="receive-progress">
           <div class="progress-head">
-            <span>Progress</span>
-            <span class="pill" id="receive-stats">0/0</span>
+            <div>
+              <p class="recv-name" id="receive-name"></p>
+              <p class="rank" id="receive-rank">Rank: 0/0</p>
+            </div>
+            <div class="percent"><span id="receive-percent">0</span><small>%</small></div>
           </div>
-          <div class="missing-list" id="missing-list">Waiting for frames</div>
+          <div class="bar"><span id="progress-bar"></span></div>
         </div>
-        <div class="grid-dots" id="receive-grid"></div>
         <div class="status" id="receive-status"></div>
       </div>
 
       <div class="card success hidden" id="success-card">
-        <p id="result-name"></p>
-        <button class="btn full" id="download-file" type="button">Download file</button>
+        <h2>Receive complete</h2>
+        <p id="finish-info"></p>
+        <button class="btn full" id="download-file" type="button">Save file</button>
       </div>
     </section>
 
@@ -422,49 +348,79 @@
     const $ = (id) => document.getElementById(id);
     const textEncoder = new TextEncoder();
 
+    const utils = {
+      prng(seed) {
+        let s = seed % 2147483647;
+        if (s <= 0) s += 2147483646;
+        return () => {
+          s = (s * 16807) % 2147483647;
+          return (s - 1) / 2147483646;
+        };
+      },
+      xor(target, source) {
+        for (let i = 0; i < target.length; i++) target[i] ^= source[i] || 0;
+      },
+      bytesToBase64(bytes) {
+        let binary = "";
+        const stride = 0x8000;
+        for (let i = 0; i < bytes.length; i += stride) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + stride));
+        }
+        return btoa(binary);
+      },
+      base64ToBytes(value) {
+        const binary = atob(value);
+        const out = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+        return out;
+      },
+      degree(total, rng) {
+        const p = rng();
+        if (p < 0.4) return 1;
+        if (p < 0.7) return Math.min(total, 2);
+        if (p < 0.9) return Math.min(total, Math.floor(rng() * 10) + 3);
+        return Math.min(total, Math.floor(rng() * total * 0.5) + 2);
+      },
+      pickIndexes(total, seed) {
+        const rng = utils.prng(seed);
+        const degree = utils.degree(total, rng);
+        const indexes = [];
+        while (indexes.length < degree) {
+          const candidate = Math.floor(rng() * total);
+          if (!indexes.includes(candidate)) indexes.push(candidate);
+        }
+        return indexes.sort((a, b) => a - b);
+      }
+    };
+
     const sender = {
-      qr: null,
-      rawData: null,
-      fileName: "",
       chunks: [],
-      frameIndex: 0,
-      fps: 12,
-      chunkSize: 350,
+      qrs: [],
       timer: null,
       tid: "",
-      isSending: false,
-      isPaused: false
+      fileName: "",
+      fileSize: 0,
+      rawData: null,
+      chunkSize: 220,
+      fps: 10
     };
 
     const receiver = {
       active: false,
-      mode: null,
+      tid: "",
+      total: 0,
+      solved: {},
+      queue: [],
+      seenSeeds: new Set(),
+      fileName: "",
+      fileSize: 0,
+      chunkSize: 0,
       stream: null,
-      rafId: 0,
       video: null,
       canvas: document.createElement("canvas"),
-      received: {},
-      total: 0,
-      tid: "",
-      fileName: "",
-      lastDecoded: ""
+      rafId: 0,
+      isFinishing: false
     };
-
-    function bytesToBase64(bytes) {
-      let binary = "";
-      const stride = 0x8000;
-      for (let i = 0; i < bytes.length; i += stride) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + stride));
-      }
-      return btoa(binary);
-    }
-
-    function base64ToBytes(value) {
-      const binary = atob(value);
-      const out = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-      return out;
-    }
 
     function setStatus(target, message, isError = false) {
       const el = $(target);
@@ -487,87 +443,73 @@
       return textEncoder.encode(text);
     }
 
-    function prepareSending(keepPosition = false) {
+    function initQrs() {
+      for (let i = 0; i < 4; i++) {
+        if (!sender.qrs[i]) {
+          sender.qrs[i] = new QRious({ element: $("qr" + i), size: 320, level: "L" });
+        }
+      }
+    }
+
+    function startSending() {
       const bytes = getPayloadBytes();
       if (!bytes) {
         setStatus("send-status", "Enter text or choose a file first.", true);
         return;
       }
 
-      const b64 = bytesToBase64(bytes);
+      stopSending(false);
+      initQrs();
+      sender.fileSize = bytes.length;
       sender.chunks = [];
-      for (let i = 0; i < b64.length; i += sender.chunkSize) {
-        sender.chunks.push(b64.slice(i, i + sender.chunkSize));
+      for (let i = 0; i < bytes.length; i += sender.chunkSize) {
+        const chunk = bytes.slice(i, i + sender.chunkSize);
+        if (chunk.length === sender.chunkSize) {
+          sender.chunks.push(chunk);
+        } else {
+          const padded = new Uint8Array(sender.chunkSize);
+          padded.set(chunk);
+          sender.chunks.push(padded);
+        }
       }
-
-      if (!keepPosition) {
-        sender.tid = Math.random().toString(36).slice(2, 7).toUpperCase();
-        sender.frameIndex = 0;
-      } else {
-        sender.frameIndex = Math.min(sender.frameIndex, Math.max(sender.chunks.length - 1, 0));
-      }
-
-      sender.isSending = true;
-      sender.isPaused = false;
+      sender.tid = Math.random().toString(36).slice(2, 7).toUpperCase();
       $("player-box").classList.remove("hidden");
-      $("pause-send").textContent = "Pause";
-      setStatus("send-status", sender.chunks.length + " frames prepared.");
-      renderFrame();
-      restartTimer();
+      $("send-stats").textContent = sender.chunks.length + " chunks";
+      setStatus("send-status", "Broadcasting fountain packets.");
+      tick();
+      sender.timer = setInterval(tick, 1000 / sender.fps);
     }
 
-    function renderFrame() {
-      if (!sender.chunks.length) return;
-      const frame = sender.frameIndex;
-      const fileName = encodeURIComponent(sender.fileName || "qrflow.txt");
-      const payload = [sender.tid, fileName, sender.chunks.length, frame, sender.chunks[frame]].join("|");
-      try {
-        sender.qr.value = payload;
-        $("current-frame").textContent = String(frame + 1);
-        $("total-frames").textContent = String(sender.chunks.length);
-        $("frame-slider").max = String(Math.max(sender.chunks.length - 1, 0));
-        $("frame-slider").value = String(frame);
-      } catch (error) {
-        setStatus("send-status", "This frame is too large for a QR code. Reduce frame size.", true);
-        stopTimer();
+    function tick() {
+      const total = sender.chunks.length;
+      if (!total) return;
+      const meta = encodeURIComponent(sender.fileName || "qrflow.bin") + ":" + sender.fileSize;
+      for (let i = 0; i < 4; i++) {
+        const seed = Math.floor(Math.random() * 2147483646) + 1;
+        const indexes = utils.pickIndexes(total, seed);
+        const xorBuffer = new Uint8Array(sender.chunkSize);
+        indexes.forEach((index) => utils.xor(xorBuffer, sender.chunks[index]));
+        const packet = [sender.tid, seed, total, utils.bytesToBase64(xorBuffer), meta].join("|");
+        try {
+          sender.qrs[i].value = packet;
+        } catch (error) {
+          setStatus("send-status", "Packet is too large for a QR code. Reduce fountain chunk size in code.", true);
+          stopSending(false);
+        }
       }
     }
 
-    function stopTimer() {
+    function stopSending(hide = true) {
       if (sender.timer) clearInterval(sender.timer);
       sender.timer = null;
-    }
-
-    function restartTimer() {
-      stopTimer();
-      sender.timer = setInterval(() => {
-        if (!sender.isSending || sender.isPaused || !sender.chunks.length) return;
-        sender.frameIndex = (sender.frameIndex + 1) % sender.chunks.length;
-        renderFrame();
-      }, 1000 / sender.fps);
-    }
-
-    function seekFrame(value) {
-      if (!sender.chunks.length) return;
-      sender.frameIndex = Math.max(0, Math.min(Number(value), sender.chunks.length - 1));
-      sender.isPaused = true;
-      $("pause-send").textContent = "Resume";
-      renderFrame();
-    }
-
-    function stepFrame(delta) {
-      if (!sender.chunks.length) return;
-      sender.frameIndex = (sender.frameIndex + delta + sender.chunks.length) % sender.chunks.length;
-      sender.isPaused = true;
-      $("pause-send").textContent = "Resume";
-      renderFrame();
+      if (hide) $("player-box").classList.add("hidden");
     }
 
     function resetFile() {
       sender.rawData = null;
       sender.fileName = "";
       $("file-input").value = "";
-      $("file-card").classList.add("hidden");
+      $("file-info").classList.add("hidden");
       setStatus("send-status", "");
     }
 
@@ -576,7 +518,6 @@
         stopScanning();
         return;
       }
-
       if (!navigator.mediaDevices) {
         setStatus("receive-status", "This browser does not expose media capture APIs.", true);
         return;
@@ -595,8 +536,6 @@
         receiver.stream = stream;
         receiver.video = video;
         receiver.active = true;
-        receiver.mode = mode;
-        receiver.lastDecoded = "";
         video.srcObject = stream;
         await video.play();
 
@@ -622,11 +561,20 @@
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         ctx.drawImage(video, 0, 0);
-        const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(image.data, image.width, image.height);
-        if (code && code.data && code.data !== receiver.lastDecoded) {
-          receiver.lastDecoded = code.data;
-          handleDecoded(code.data);
+        const w = canvas.width;
+        const h = canvas.height;
+        const regions = [
+          [0, 0, w, h],
+          [0, 0, Math.floor(w / 2), Math.floor(h / 2)],
+          [Math.floor(w / 2), 0, Math.floor(w / 2), Math.floor(h / 2)],
+          [0, Math.floor(h / 2), Math.floor(w / 2), Math.floor(h / 2)],
+          [Math.floor(w / 2), Math.floor(h / 2), Math.floor(w / 2), Math.floor(h / 2)]
+        ];
+        for (const [x, y, rw, rh] of regions) {
+          if (rw <= 0 || rh <= 0) continue;
+          const image = ctx.getImageData(x, y, rw, rh);
+          const code = jsQR(image.data, image.width, image.height);
+          if (code && code.data) handleFountainPacket(code.data);
         }
       }
       receiver.rafId = requestAnimationFrame(scanLoop);
@@ -639,95 +587,156 @@
       receiver.stream = null;
       receiver.video = null;
       receiver.active = false;
-      receiver.mode = null;
       $("reader").innerHTML = '<p id="reader-placeholder">Waiting to start scanning...</p>';
-      $("camera-scan").textContent = "Camera";
-      $("screen-scan").textContent = "Screen capture";
+      $("camera-scan").textContent = "Camera receive";
+      $("screen-scan").textContent = "Screen receive";
     }
 
     function resetReceiveState() {
       stopScanning();
-      receiver.received = {};
-      receiver.total = 0;
       receiver.tid = "";
+      receiver.total = 0;
+      receiver.solved = {};
+      receiver.queue = [];
+      receiver.seenSeeds = new Set();
       receiver.fileName = "";
-      receiver.lastDecoded = "";
-      $("task-info").classList.add("hidden");
-      $("receive-file-name").textContent = "";
-      $("receive-stats").textContent = "0/0";
-      $("missing-list").textContent = "Waiting for frames";
-      $("receive-grid").innerHTML = "";
+      receiver.fileSize = 0;
+      receiver.chunkSize = 0;
+      receiver.isFinishing = false;
+      $("receive-progress").classList.add("hidden");
+      $("receive-name").textContent = "";
+      $("receive-rank").textContent = "Rank: 0/0";
+      $("receive-percent").textContent = "0";
+      $("progress-bar").style.width = "0";
       $("success-card").classList.add("hidden");
       setStatus("receive-status", "");
     }
 
-    function handleDecoded(text) {
-      const parts = text.split("|");
+    function handleFountainPacket(raw) {
+      if (!receiver.active || receiver.isFinishing) return;
+      const parts = raw.split("|");
       if (parts.length !== 5) return;
-      const [tid, encodedName, totalRaw, indexRaw, data] = parts;
+      const [tid, seedRaw, totalRaw, b64, meta] = parts;
+      const seed = Number(seedRaw);
       const total = Number(totalRaw);
-      const index = Number(indexRaw);
-      if (!tid || !Number.isInteger(total) || !Number.isInteger(index) || index < 0 || index >= total) return;
+      if (!tid || !Number.isInteger(seed) || !Number.isInteger(total) || total <= 0) return;
 
-      if (tid !== receiver.tid) {
+      if (receiver.tid !== tid) {
         receiver.tid = tid;
         receiver.total = total;
-        receiver.received = {};
+        receiver.solved = {};
+        receiver.queue = [];
+        receiver.seenSeeds = new Set();
+        receiver.isFinishing = false;
+        const splitAt = meta.lastIndexOf(":");
         try {
-          receiver.fileName = decodeURIComponent(encodedName);
+          receiver.fileName = decodeURIComponent(meta.slice(0, splitAt));
         } catch {
-          receiver.fileName = encodedName;
+          receiver.fileName = meta.slice(0, splitAt);
         }
-        $("task-info").classList.remove("hidden");
-        $("receive-file-name").textContent = receiver.fileName;
-        $("receive-grid").innerHTML = "";
-        for (let i = 0; i < total; i++) {
-          const dot = document.createElement("div");
-          dot.className = "dot";
-          dot.id = "dot-" + i;
-          $("receive-grid").appendChild(dot);
-        }
+        receiver.fileSize = Number(meta.slice(splitAt + 1));
+        receiver.chunkSize = utils.base64ToBytes(b64).length;
+        $("receive-progress").classList.remove("hidden");
+        $("receive-name").textContent = receiver.fileName || "qrflow.bin";
+        $("success-card").classList.add("hidden");
       }
 
-      if (!receiver.received[index]) {
-        receiver.received[index] = data;
-        const dot = $("dot-" + index);
-        if (dot) dot.classList.add("received");
-        updateMissingUI();
-        if (Object.keys(receiver.received).length === receiver.total) finalizeReceive();
+      if (receiver.seenSeeds.has(seed)) return;
+      receiver.seenSeeds.add(seed);
+      if (Object.keys(receiver.solved).length < receiver.total) {
+        processPacket(seed, total, utils.base64ToBytes(b64));
       }
     }
 
-    function updateMissingUI() {
-      const done = Object.keys(receiver.received).length;
-      $("receive-stats").textContent = done + "/" + receiver.total;
-      const missing = [];
-      for (let i = 0; i < receiver.total; i++) {
-        if (!receiver.received[i]) missing.push(i);
+    function processPacket(seed, total, data) {
+      if (receiver.isFinishing) return;
+      let indexes = utils.pickIndexes(total, seed);
+      const curData = new Uint8Array(data);
+
+      for (let i = 0; i < indexes.length; i++) {
+        const index = indexes[i];
+        if (receiver.solved[index]) {
+          utils.xor(curData, receiver.solved[index]);
+          indexes.splice(i, 1);
+          i--;
+        }
       }
-      if (!missing.length) {
-        $("missing-list").innerHTML = '<span style="color: var(--success); font-weight: 850;">All frames received</span>';
-        return;
+      if (!indexes.length) return;
+
+      for (const item of receiver.queue) {
+        if (!indexes.length) break;
+        if (item.indexes[0] === indexes[0]) {
+          utils.xor(curData, item.data);
+          indexes = xorIndexLists(indexes, item.indexes);
+        } else if (item.indexes[0] > indexes[0]) {
+          break;
+        }
       }
-      $("missing-list").innerHTML = "";
-      missing.forEach((index) => {
-        const button = document.createElement("button");
-        button.className = "missing-chip";
-        button.type = "button";
-        button.dataset.frame = String(index);
-        button.textContent = String(index + 1);
-        $("missing-list").appendChild(button);
+
+      if (indexes.length > 0) {
+        receiver.queue.push({ indexes, data: curData });
+        receiver.queue.sort((a, b) => a.indexes[0] - b.indexes[0]);
+      }
+
+      let foundNew = true;
+      while (foundNew) {
+        foundNew = false;
+        for (let i = 0; i < receiver.queue.length; i++) {
+          const item = receiver.queue[i];
+          if (item.indexes.length === 1) {
+            const solvedIndex = item.indexes[0];
+            if (!receiver.solved[solvedIndex]) {
+              receiver.solved[solvedIndex] = item.data;
+            }
+            receiver.queue.splice(i, 1);
+            foundNew = true;
+            receiver.queue.forEach((queued) => {
+              if (queued.indexes.includes(solvedIndex)) {
+                utils.xor(queued.data, item.data);
+                queued.indexes = queued.indexes.filter((index) => index !== solvedIndex);
+              }
+            });
+            receiver.queue = receiver.queue.filter((queued) => queued.indexes.length > 0);
+            break;
+          }
+        }
+      }
+      updateReceiveUI();
+    }
+
+    function xorIndexLists(a, b) {
+      const set = new Set(a);
+      b.forEach((value) => {
+        if (set.has(value)) set.delete(value);
+        else set.add(value);
       });
+      return Array.from(set).sort((x, y) => x - y);
+    }
+
+    function updateReceiveUI() {
+      const done = Object.keys(receiver.solved).length;
+      const pct = receiver.total ? Math.min(100, Math.floor((done / receiver.total) * 100)) : 0;
+      $("progress-bar").style.width = pct + "%";
+      $("receive-percent").textContent = String(pct);
+      $("receive-rank").textContent = "Rank: " + done + "/" + receiver.total;
+      if (done >= receiver.total) finalizeReceive();
     }
 
     function finalizeReceive() {
+      if (receiver.isFinishing) return;
+      receiver.isFinishing = true;
       stopScanning();
-      let joined = "";
-      for (let i = 0; i < receiver.total; i++) joined += receiver.received[i];
-      const blob = new Blob([base64ToBytes(joined)], { type: "application/octet-stream" });
+      const finalBytes = new Uint8Array(receiver.fileSize);
+      for (let i = 0; i < receiver.total; i++) {
+        const start = i * receiver.chunkSize;
+        if (start >= receiver.fileSize || !receiver.solved[i]) continue;
+        const length = Math.min(receiver.chunkSize, receiver.fileSize - start);
+        finalBytes.set(receiver.solved[i].slice(0, length), start);
+      }
+      const blob = new Blob([finalBytes], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       $("success-card").classList.remove("hidden");
-      $("result-name").textContent = "Transfer complete: " + receiver.fileName;
+      $("finish-info").textContent = (receiver.fileName || "qrflow.bin") + " (" + (receiver.fileSize / 1024).toFixed(1) + " KB)";
       $("download-file").onclick = () => {
         const a = document.createElement("a");
         a.href = url;
@@ -742,24 +751,11 @@
       $("tab-receive").addEventListener("click", () => switchTab("receive"));
       $("choose-file").addEventListener("click", () => $("file-input").click());
       $("clear-file").addEventListener("click", resetFile);
-      $("start-send").addEventListener("click", () => prepareSending(false));
-      $("pause-send").addEventListener("click", () => {
-        sender.isPaused = !sender.isPaused;
-        $("pause-send").textContent = sender.isPaused ? "Resume" : "Pause";
-      });
-      $("prev-frame").addEventListener("click", () => stepFrame(-1));
-      $("next-frame").addEventListener("click", () => stepFrame(1));
-      $("frame-slider").addEventListener("input", (event) => seekFrame(event.target.value));
-      $("fps-range").addEventListener("input", (event) => {
-        sender.fps = Number(event.target.value);
-        $("fps-value").textContent = String(sender.fps);
-        if (sender.isSending) restartTimer();
-      });
-      $("chunk-range").addEventListener("input", (event) => {
-        sender.chunkSize = Number(event.target.value);
-        $("chunk-value").textContent = String(sender.chunkSize);
-        if (sender.isSending) prepareSending(true);
-      });
+      $("start-send").addEventListener("click", startSending);
+      $("stop-send").addEventListener("click", () => stopSending(true));
+      $("camera-scan").addEventListener("click", () => startVideoScan("camera"));
+      $("screen-scan").addEventListener("click", () => startVideoScan("screen"));
+      $("reset-receive").addEventListener("click", resetReceiveState);
       $("file-input").addEventListener("change", (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -768,28 +764,19 @@
         reader.onload = (loadEvent) => {
           sender.rawData = new Uint8Array(loadEvent.target.result);
           $("file-name").textContent = file.name;
-          $("file-card").classList.remove("hidden");
+          $("file-info").classList.remove("hidden");
           setStatus("send-status", file.name + " loaded.");
         };
         reader.onerror = () => setStatus("send-status", "Unable to read the selected file.", true);
         reader.readAsArrayBuffer(file);
       });
-      $("camera-scan").addEventListener("click", () => startVideoScan("camera"));
-      $("screen-scan").addEventListener("click", () => startVideoScan("screen"));
-      $("reset-receive").addEventListener("click", resetReceiveState);
-      $("missing-list").addEventListener("click", (event) => {
-        const button = event.target.closest("[data-frame]");
-        if (!button) return;
-        seekFrame(Number(button.dataset.frame));
-        switchTab("send");
-      });
       window.addEventListener("beforeunload", () => {
-        stopTimer();
+        stopSending(false);
         stopScanning();
       });
     }
 
-    sender.qr = new QRious({ element: $("qr-canvas"), size: 360, level: "L" });
+    initQrs();
     bindEvents();
   })();
   </script>
