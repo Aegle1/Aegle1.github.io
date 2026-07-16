@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -296,32 +296,17 @@
       font-size: 1.08rem;
       line-height: 1.1;
     }
-    .frame-range {
+    .missing-list {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 10px;
+      grid-template-columns: repeat(auto-fill, 42px);
+      gap: 6px;
+      align-items: start;
+      color: #9aa4b2;
+      font-size: .85rem;
     }
-    .range-btn {
-      min-height: 34px;
-      padding: 7px 10px;
-      border: 1px solid #ffd3dc;
-      border-radius: 8px;
-      color: var(--danger);
-      background: #fff;
-      font-weight: 900;
-    }
-    .range-btn:disabled { opacity: .42; }
-    .range-label {
-      min-width: 0;
-      color: #8b4050;
-      font-size: .8rem;
-      font-weight: 850;
-      text-align: center;
-    }
-    .missing-list { display: flex; flex-wrap: wrap; gap: 6px; color: #9aa4b2; font-size: .85rem; }
     .missing-chip {
-      min-width: 34px;
+      width: 42px;
+      min-width: 0;
       padding: 5px 7px;
       border: 1px solid #ffd3dc;
       border-radius: 6px;
@@ -330,7 +315,7 @@
       font-size: .78rem;
       font-weight: 900;
     }
-    .missing-overflow,
+    .missing-more,
     .empty-note {
       display: inline-flex;
       align-items: center;
@@ -339,6 +324,7 @@
       font-size: .78rem;
       font-weight: 850;
     }
+    .missing-more { grid-column: 1 / -1; }
     .grid-dots {
       display: grid;
       grid-template-columns: repeat(auto-fill, 10px);
@@ -351,8 +337,18 @@
       height: 10px;
       border-radius: 2px;
       background: #e9edf5;
+      outline: 1px solid rgba(20, 30, 55, .04);
     }
-    .dot.received { background: var(--success); }
+    .dot:focus-visible {
+      outline: 2px solid rgba(23, 105, 224, .55);
+      outline-offset: 2px;
+    }
+    .missing-label {
+      margin: 0 0 -4px;
+      color: #8b4050;
+      font-size: .78rem;
+      font-weight: 950;
+    }
     .success {
       text-align: center;
       color: #fff;
@@ -385,8 +381,6 @@
       .button-grid, .scan-grid, .camera-row { grid-template-columns: 1fr; }
       .scan-grid .reset { grid-column: auto; }
       .receive-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .frame-range { grid-template-columns: 1fr 1fr; }
-      .range-label { grid-column: 1 / -1; grid-row: 1; }
       .reader { max-width: none; }
     }
 
@@ -908,12 +902,8 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
             <div class="receive-metric"><span>Missing</span><strong id="receive-missing-count">0</strong></div>
             <div class="receive-metric"><span>Total</span><strong id="receive-total">0</strong></div>
           </div>
-          <div class="frame-range" aria-label="Frame range">
-            <button class="range-btn" id="frame-page-prev" type="button" disabled>Prev</button>
-            <div class="range-label" id="frame-range-label">Waiting for frames</div>
-            <button class="range-btn" id="frame-page-next" type="button" disabled>Next</button>
-          </div>
-          <div class="grid-dots" id="receive-grid"></div>
+          <div class="grid-dots" id="receive-grid" aria-label="Received frame overview"></div>
+          <p class="missing-label">Missing frames:</p>
           <div class="missing-list" id="missing-list">Waiting for frames</div>
         </div>
         <div class="status" id="receive-status"></div>
@@ -1056,8 +1046,8 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
     const root = document.getElementById("mode-normal");
     const $ = (id) => root.querySelector("#" + id);
     const textEncoder = new TextEncoder();
-    const FRAME_PAGE_SIZE = 240;
-    const MISSING_CHIP_LIMIT = 48;
+    const OVERVIEW_CELL_PITCH = 13;
+    const MISSING_CHIP_PITCH = 48;
 
     const sender = {
       qr: null,
@@ -1086,7 +1076,6 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       tid: "",
       fileName: "",
       lastDecoded: "",
-      framePage: 0,
       selectedDeviceId: "",
       cameraPermissionPrimed: false,
       openingCameraPicker: false,
@@ -1452,7 +1441,6 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       receiver.tid = "";
       receiver.fileName = "";
       receiver.lastDecoded = "";
-      receiver.framePage = 0;
       $("task-info").classList.add("hidden");
       $("receive-file-name").textContent = "";
       updateReceiveUI();
@@ -1474,7 +1462,6 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
         receiver.tid = tid;
         receiver.total = total;
         receiver.received = {};
-        receiver.framePage = 0;
         try {
           receiver.fileName = decodeURIComponent(encodedName);
         } catch {
@@ -1500,30 +1487,56 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       return missing;
     }
 
+    function getOverviewRowCount() {
+      const width = window.innerWidth || 0;
+      const height = window.innerHeight || 0;
+      if (width <= 520) return 4;
+      if (height >= 980) return 6;
+      if (height >= 760) return 5;
+      return 4;
+    }
+
+    function getMissingRowCount() {
+      const width = window.innerWidth || 0;
+      const height = window.innerHeight || 0;
+      if (width <= 520) return 3;
+      return height >= 900 ? 3 : 2;
+    }
+
     function renderFrameGrid() {
       const grid = $("receive-grid");
       grid.innerHTML = "";
       const total = receiver.total;
-      const pageCount = Math.max(1, Math.ceil(total / FRAME_PAGE_SIZE));
-      receiver.framePage = Math.max(0, Math.min(receiver.framePage, pageCount - 1));
       if (!total) {
-        $("frame-range-label").textContent = "Waiting for frames";
-        $("frame-page-prev").disabled = true;
-        $("frame-page-next").disabled = true;
         return;
       }
 
-      const start = receiver.framePage * FRAME_PAGE_SIZE;
-      const end = Math.min(start + FRAME_PAGE_SIZE, total);
-      $("frame-range-label").textContent = `Frames ${start + 1}-${end} of ${total}`;
-      $("frame-page-prev").disabled = receiver.framePage === 0;
-      $("frame-page-next").disabled = receiver.framePage >= pageCount - 1;
+      const width = grid.clientWidth || grid.getBoundingClientRect().width || 320;
+      const columns = Math.max(1, Math.floor(width / OVERVIEW_CELL_PITCH));
+      const desiredRows = getOverviewRowCount();
+      const rows = total >= columns ? Math.min(desiredRows, Math.max(1, Math.floor(total / columns))) : 1;
+      const bucketCount = Math.max(1, total >= columns ? columns * rows : total);
 
-      for (let i = start; i < end; i++) {
+      for (let bucket = 0; bucket < bucketCount; bucket++) {
+        const start = Math.floor((bucket * total) / bucketCount);
+        const end = Math.floor(((bucket + 1) * total) / bucketCount);
+        let received = 0;
+        for (let i = start; i < end; i++) {
+          if (receiver.received[i]) received++;
+        }
+        const count = Math.max(end - start, 1);
+        const ratio = received / count;
         const dot = document.createElement("div");
         dot.className = "dot";
-        if (receiver.received[i]) dot.classList.add("received");
-        dot.title = `Frame ${i + 1}${receiver.received[i] ? " received" : " missing"}`;
+        if (received > 0) {
+          const alpha = 0.18 + ratio * 0.82;
+          dot.style.background = `rgba(6, 138, 91, ${alpha.toFixed(2)})`;
+        }
+        const detail = `Frames ${start + 1}-${end}\nreceived ${received}/${count}`;
+        dot.title = detail;
+        dot.tabIndex = 0;
+        dot.setAttribute("role", "img");
+        dot.setAttribute("aria-label", detail);
         grid.appendChild(dot);
       }
     }
@@ -1540,10 +1553,10 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
         return;
       }
 
-      const start = receiver.framePage * FRAME_PAGE_SIZE;
-      const end = Math.min(start + FRAME_PAGE_SIZE, receiver.total);
-      const visibleMissing = missing.filter((index) => index >= start && index < end);
-      const shown = visibleMissing.slice(0, MISSING_CHIP_LIMIT);
+      const width = list.clientWidth || list.getBoundingClientRect().width || 320;
+      const columns = Math.max(1, Math.floor(width / MISSING_CHIP_PITCH));
+      const limit = Math.max(1, columns * getMissingRowCount());
+      const shown = missing.slice(0, limit);
       shown.forEach((index) => {
         const button = document.createElement("button");
         button.className = "missing-chip";
@@ -1553,16 +1566,11 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
         list.appendChild(button);
       });
 
-      const hiddenInRange = Math.max(visibleMissing.length - shown.length, 0);
-      const outsideRange = missing.length - visibleMissing.length;
-      if (hiddenInRange || outsideRange || !shown.length) {
+      const hidden = Math.max(missing.length - shown.length, 0);
+      if (hidden) {
         const note = document.createElement("span");
-        note.className = "missing-overflow";
-        const parts = [];
-        if (hiddenInRange) parts.push("+" + hiddenInRange + " more in range");
-        if (outsideRange) parts.push(outsideRange + " missing outside range");
-        if (!shown.length && visibleMissing.length === 0) parts.push("No missing frames in this range");
-        note.textContent = parts.join(" · ");
+        note.className = "missing-more";
+        note.textContent = "+" + hidden + " more";
         list.appendChild(note);
       }
     }
@@ -1651,14 +1659,8 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       $("camera-scan").addEventListener("click", () => startVideoScan("camera"));
       $("screen-scan").addEventListener("click", () => startVideoScan("screen"));
       $("reset-receive").addEventListener("click", resetReceiveState);
-      $("frame-page-prev").addEventListener("click", () => {
-        receiver.framePage = Math.max(receiver.framePage - 1, 0);
-        updateReceiveUI();
-      });
-      $("frame-page-next").addEventListener("click", () => {
-        const pageCount = Math.max(1, Math.ceil(receiver.total / FRAME_PAGE_SIZE));
-        receiver.framePage = Math.min(receiver.framePage + 1, pageCount - 1);
-        updateReceiveUI();
+      window.addEventListener("resize", () => {
+        if (receiver.total) updateReceiveUI();
       });
       $("missing-list").addEventListener("click", (event) => {
         const button = event.target.closest("[data-frame]");
