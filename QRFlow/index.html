@@ -180,8 +180,8 @@
       box-shadow: var(--shadow);
     }
     #qr-canvas {
-      width: 100% !important;
-      max-width: 360px;
+      width: 360px;
+      max-width: 100%;
       height: auto !important;
     }
     .player-controls { display: grid; gap: 18px; margin-top: 18px; }
@@ -325,6 +325,10 @@
       font-weight: 850;
     }
     .missing-more { grid-column: 1 / -1; }
+    .empty-note {
+      grid-column: 1 / -1;
+      white-space: nowrap;
+    }
     .grid-dots {
       display: grid;
       grid-template-columns: repeat(auto-fill, 10px);
@@ -904,7 +908,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
           </div>
           <div class="grid-dots" id="receive-grid" aria-label="Received frame overview"></div>
           <p class="missing-label">Missing frames:</p>
-          <div class="missing-list" id="missing-list">Waiting for frames</div>
+          <div class="missing-list" id="missing-list"><span class="empty-note">Waiting for frames</span></div>
         </div>
         <div class="status" id="receive-status"></div>
       </div>
@@ -1046,8 +1050,17 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
     const root = document.getElementById("mode-normal");
     const $ = (id) => root.querySelector("#" + id);
     const textEncoder = new TextEncoder();
+    const QR_RENDER_SIZE = 1000;
+    const QR_MATRIX_TARGET_SIZE = 960;
+    const QR_BYTE_CAPACITY_L = [
+      17, 32, 53, 78, 106, 134, 154, 192, 230, 271,
+      321, 367, 425, 458, 520, 586, 644, 718, 792, 858,
+      929, 1003, 1091, 1171, 1273, 1367, 1465, 1528, 1628, 1732,
+      1840, 1952, 2068, 2188, 2303, 2431, 2563, 2699, 2809, 2953
+    ];
     const OVERVIEW_CELL_PITCH = 13;
     const MISSING_CHIP_PITCH = 48;
+    const qrScratchCanvas = document.createElement("canvas");
 
     const sender = {
       qr: null,
@@ -1122,7 +1135,45 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       return textEncoder.encode(text);
     }
 
-    function prepareSending(keepPosition = false) {
+    function getQrMatrixWidth(value) {
+      const version = QR_BYTE_CAPACITY_L.findIndex((capacity) => value.length <= capacity) + 1;
+      return 17 + 4 * (version || QR_BYTE_CAPACITY_L.length);
+    }
+
+    function normalizeQrCanvas(canvas, value) {
+      const matrixWidth = getQrMatrixWidth(value);
+      const sourceModuleSize = Math.max(1, Math.floor(QR_RENDER_SIZE / matrixWidth));
+      const sourceSize = sourceModuleSize * matrixWidth;
+      const sourceOffset = Math.max(0, Math.floor((QR_RENDER_SIZE - sourceSize) / 2));
+      const targetOffset = Math.floor((QR_RENDER_SIZE - QR_MATRIX_TARGET_SIZE) / 2);
+
+      if (qrScratchCanvas.width !== QR_RENDER_SIZE) {
+        qrScratchCanvas.width = QR_RENDER_SIZE;
+        qrScratchCanvas.height = QR_RENDER_SIZE;
+      }
+
+      const scratchContext = qrScratchCanvas.getContext("2d");
+      scratchContext.clearRect(0, 0, QR_RENDER_SIZE, QR_RENDER_SIZE);
+      scratchContext.drawImage(canvas, 0, 0);
+
+      const context = canvas.getContext("2d");
+      context.imageSmoothingEnabled = false;
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, QR_RENDER_SIZE, QR_RENDER_SIZE);
+      context.drawImage(
+        qrScratchCanvas,
+        sourceOffset,
+        sourceOffset,
+        sourceSize,
+        sourceSize,
+        targetOffset,
+        targetOffset,
+        QR_MATRIX_TARGET_SIZE,
+        QR_MATRIX_TARGET_SIZE
+      );
+    }
+
+    function prepareSending(keepPosition = false, options = {}) {
       const bytes = getPayloadBytes();
       if (!bytes) {
         setStatus("send-status", "Enter text or choose a file first.", true);
@@ -1142,10 +1193,11 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
         sender.frameIndex = Math.min(sender.frameIndex, Math.max(sender.chunks.length - 1, 0));
       }
 
+      const wasPaused = sender.isPaused;
       sender.isSending = true;
-      sender.isPaused = false;
+      sender.isPaused = options.preservePlayback ? wasPaused : false;
       $("player-box").classList.remove("hidden");
-      $("pause-send").textContent = "Pause";
+      $("pause-send").textContent = sender.isPaused ? "Resume" : "Pause";
       setStatus("send-status", sender.chunks.length + " frames prepared.");
       renderFrame();
       restartTimer();
@@ -1158,6 +1210,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       const payload = [sender.tid, fileName, sender.chunks.length, frame, sender.chunks[frame]].join("|");
       try {
         sender.qr.value = payload;
+        normalizeQrCanvas($("qr-canvas"), payload);
         $("current-frame").textContent = String(frame + 1);
         $("total-frames").textContent = String(sender.chunks.length);
         $("frame-slider").max = String(Math.max(sender.chunks.length - 1, 0));
@@ -1165,15 +1218,14 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       } catch (error) {
         setStatus("send-status", "This frame is too large for a QR code. Reduce frame size.", true);
         stopTimer();
+        sender.isSending = false;
       }
     }
 
     function applyQrSize() {
       sender.qrSize = Number($("qr-size-range").value);
       $("qr-size-value").textContent = String(sender.qrSize);
-      $("qr-canvas").style.maxWidth = sender.qrSize + "px";
-      sender.qr.size = sender.qrSize;
-      renderFrame();
+      $("qr-canvas").style.width = sender.qrSize + "px";
     }
 
     function stopTimer() {
@@ -1355,6 +1407,11 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
         return;
       }
 
+      if (mode === "screen" && (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== "function")) {
+        setStatus("receive-status", "Screen receive is not supported by this browser or device.", true);
+        return;
+      }
+
       if (!navigator.mediaDevices) {
         setStatus("receive-status", "This browser does not expose media capture APIs.", true);
         return;
@@ -1444,7 +1501,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       $("task-info").classList.add("hidden");
       $("receive-file-name").textContent = "";
       updateReceiveUI();
-      $("missing-list").textContent = "Waiting for frames";
+      $("missing-list").innerHTML = '<span class="empty-note">Waiting for frames</span>';
       $("receive-grid").innerHTML = "";
       $("success-card").classList.add("hidden");
       setStatus("receive-status", "");
@@ -1545,7 +1602,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       const list = $("missing-list");
       list.innerHTML = "";
       if (!receiver.total) {
-        list.textContent = "Waiting for frames";
+        list.innerHTML = '<span class="empty-note">Waiting for frames</span>';
         return;
       }
       if (!missing.length) {
@@ -1629,7 +1686,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       $("chunk-range").addEventListener("input", (event) => {
         sender.chunkSize = Number(event.target.value);
         $("chunk-value").textContent = String(sender.chunkSize);
-        if (sender.isSending) prepareSending(true);
+        if (sender.isSending) prepareSending(true, { preservePlayback: true });
       });
       $("qr-size-range").addEventListener("input", applyQrSize);
       $("file-input").addEventListener("change", (event) => {
@@ -1674,7 +1731,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       });
     }
 
-    sender.qr = new QRious({ element: $("qr-canvas"), size: 360, level: "L" });
+    sender.qr = new QRious({ element: $("qr-canvas"), size: QR_RENDER_SIZE, level: "L" });
     applyQrSize();
     bindEvents();
     refreshCameraList(false);
@@ -1703,6 +1760,15 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
     const root = document.getElementById("mode-fountain");
     const $ = (id) => root.querySelector("#" + id);
     const textEncoder = new TextEncoder();
+    const QR_RENDER_SIZE = 1000;
+    const QR_MATRIX_TARGET_SIZE = 960;
+    const QR_BYTE_CAPACITY_L = [
+      17, 32, 53, 78, 106, 134, 154, 192, 230, 271,
+      321, 367, 425, 458, 520, 586, 644, 718, 792, 858,
+      929, 1003, 1091, 1171, 1273, 1367, 1465, 1528, 1628, 1732,
+      1840, 1952, 2068, 2188, 2303, 2431, 2563, 2699, 2809, 2953
+    ];
+    const qrScratchCanvas = document.createElement("canvas");
 
     const utils = {
       prng(seed) {
@@ -1818,6 +1884,44 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       return Math.ceil(count / getStreamColumns(count));
     }
 
+    function getQrMatrixWidth(value) {
+      const version = QR_BYTE_CAPACITY_L.findIndex((capacity) => value.length <= capacity) + 1;
+      return 17 + 4 * (version || QR_BYTE_CAPACITY_L.length);
+    }
+
+    function normalizeQrCanvas(canvas, value) {
+      const matrixWidth = getQrMatrixWidth(value);
+      const sourceModuleSize = Math.max(1, Math.floor(QR_RENDER_SIZE / matrixWidth));
+      const sourceSize = sourceModuleSize * matrixWidth;
+      const sourceOffset = Math.max(0, Math.floor((QR_RENDER_SIZE - sourceSize) / 2));
+      const targetOffset = Math.floor((QR_RENDER_SIZE - QR_MATRIX_TARGET_SIZE) / 2);
+
+      if (qrScratchCanvas.width !== QR_RENDER_SIZE) {
+        qrScratchCanvas.width = QR_RENDER_SIZE;
+        qrScratchCanvas.height = QR_RENDER_SIZE;
+      }
+
+      const scratchContext = qrScratchCanvas.getContext("2d");
+      scratchContext.clearRect(0, 0, QR_RENDER_SIZE, QR_RENDER_SIZE);
+      scratchContext.drawImage(canvas, 0, 0);
+
+      const context = canvas.getContext("2d");
+      context.imageSmoothingEnabled = false;
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, QR_RENDER_SIZE, QR_RENDER_SIZE);
+      context.drawImage(
+        qrScratchCanvas,
+        sourceOffset,
+        sourceOffset,
+        sourceSize,
+        sourceSize,
+        targetOffset,
+        targetOffset,
+        QR_MATRIX_TARGET_SIZE,
+        QR_MATRIX_TARGET_SIZE
+      );
+    }
+
     function renderQrCanvases() {
       const container = $("qr-container");
       const columns = getStreamColumns(sender.streamCount);
@@ -1832,7 +1936,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
         canvas.id = "qr" + i;
         canvas.setAttribute("aria-label", `Fountain stream ${i + 1} of ${sender.streamCount}`);
         container.appendChild(canvas);
-        sender.qrs[i] = new QRious({ element: canvas, size: sender.qrSize, level: "L" });
+        sender.qrs[i] = new QRious({ element: canvas, size: QR_RENDER_SIZE, level: "L" });
       }
       container.setAttribute("aria-label", `${sender.streamCount} QR streams in a ${columns} by ${rows} layout`);
     }
@@ -1842,16 +1946,39 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       $("send-stats").textContent = `${chunks} · ${sender.streamCount} streams · ${sender.fps} FPS · ${sender.qrSize}px`;
     }
 
-    function applyStreamSettings() {
+    function refreshActiveBroadcast() {
+      if (!sender.isSending) return;
+      if (sender.timer) clearInterval(sender.timer);
+      sender.timer = setInterval(tick, 1000 / sender.fps);
+      tick();
+    }
+
+    function applyStreamCountSetting() {
       sender.streamCount = Number($("stream-count-range").value);
-      sender.fps = Number($("fps-range").value);
-      sender.qrSize = Number($("qr-size-range").value);
-      sender.chunkSize = Number($("chunk-size-range").value);
       $("stream-count-value").textContent = String(sender.streamCount);
-      $("fps-value").textContent = String(sender.fps);
-      $("qr-size-value").textContent = String(sender.qrSize);
-      $("chunk-size-value").textContent = String(sender.chunkSize);
       renderQrCanvases();
+      updateSendStats();
+      refreshActiveBroadcast();
+    }
+
+    function applyFpsSetting() {
+      sender.fps = Number($("fps-range").value);
+      $("fps-value").textContent = String(sender.fps);
+      updateSendStats();
+      refreshActiveBroadcast();
+    }
+
+    function applyQrSizeSetting() {
+      sender.qrSize = Number($("qr-size-range").value);
+      $("qr-size-value").textContent = String(sender.qrSize);
+      renderQrCanvases();
+      updateSendStats();
+      refreshActiveBroadcast();
+    }
+
+    function applyChunkSizeSetting() {
+      sender.chunkSize = Number($("chunk-size-range").value);
+      $("chunk-size-value").textContent = String(sender.chunkSize);
       updateSendStats();
       if (sender.isSending) startSending();
     }
@@ -1898,6 +2025,7 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
         const packet = [sender.tid, seed, total, utils.bytesToBase64(xorBuffer), meta].join("|");
         try {
           sender.qrs[i].value = packet;
+          normalizeQrCanvas(sender.qrs[i].canvas, packet);
         } catch (error) {
           setStatus("send-status", "Packet is too large for QR encoding. Reduce bytes/frame.", true);
           stopSending(false);
@@ -2051,6 +2179,10 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
     async function startVideoScan(mode) {
       if (receiver.active) {
         stopScanning();
+        return;
+      }
+      if (mode === "screen" && (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== "function")) {
+        setStatus("receive-status", "Screen receive is not supported by this browser or device.", true);
         return;
       }
       if (!navigator.mediaDevices) {
@@ -2338,10 +2470,10 @@ body[data-mode="fountain"] .mode-toggle-thumb { transform: translateX(20px); }
       });
       $("choose-file").addEventListener("click", () => $("file-input").click());
       $("clear-file").addEventListener("click", resetFile);
-      $("stream-count-range").addEventListener("input", applyStreamSettings);
-      $("fps-range").addEventListener("input", applyStreamSettings);
-      $("qr-size-range").addEventListener("input", applyStreamSettings);
-      $("chunk-size-range").addEventListener("input", applyStreamSettings);
+      $("stream-count-range").addEventListener("input", applyStreamCountSetting);
+      $("fps-range").addEventListener("input", applyFpsSetting);
+      $("qr-size-range").addEventListener("input", applyQrSizeSetting);
+      $("chunk-size-range").addEventListener("input", applyChunkSizeSetting);
       $("start-send").addEventListener("click", startSending);
       $("stop-send").addEventListener("click", () => stopSending(true));
       $("camera-scan").addEventListener("click", () => startVideoScan("camera"));
